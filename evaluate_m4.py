@@ -74,7 +74,8 @@ def run_and_forecast(factory, train_series, h):
     for y in train_series:
         dists, state = f(y, state)
     # dists now contains h-step-ahead distributional forecasts
-    return [d.mean for d in dists]
+    # Use median (quantile 0.5) since sMAPE/MASE use absolute error
+    return [d.quantile(0.5) for d in dists]
 
 
 def main():

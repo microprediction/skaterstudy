@@ -149,7 +149,7 @@ def main():
             state = None
             for y in train:
                 dists, state = f(y, state)
-            pred = [d.mean for d in dists]
+            pred = [d.quantile(0.5) for d in dists]
             if len(pred) == len(actual):
                 cum_smape[pname] += smape(actual, pred)
                 m = mase(actual, pred, train)
