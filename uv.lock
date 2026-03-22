@@ -218,10 +218,16 @@ wheels = [
 [[package]]
 name = "skaters"
 version = "0.5.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f5/33/69c9beb52a6ec48e931fa4002e5ee07e849e200fbdd2b9d81b4fc5e7c24b/skaters-0.5.0.tar.gz", hash = "sha256:61ba58b5ae04f08a73872f62b0c3eab280227b8b86bb7f76a02906c04e82138e", size = 27813, upload-time = "2026-03-21T22:29:36.166Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/bc/17/330de959ccee9259495aa9c6af98abb0389a98edc0d864b7c6810ef6fe32/skaters-0.5.0-py3-none-any.whl", hash = "sha256:0ee65613768ae73939c6ff0615964d557507d1f5e4419249a3436be47555655b", size = 36278, upload-time = "2026-03-21T22:29:35.056Z" },
+source = { editable = "../skaters" }
+
+[package.metadata]
+requires-dist = [{ name = "pytest", marker = "extra == 'dev'" }]
+provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
 ]
 
 [[package]]
@@ -238,7 +244,7 @@ dependencies = [
 requires-dist = [
     { name = "pandas", specifier = ">=3.0.1" },
     { name = "requests", specifier = ">=2.32.5" },
-    { name = "skaters", specifier = ">=0.5.0" },
+    { name = "skaters", editable = "../skaters" },
 ]
 
 [[package]]

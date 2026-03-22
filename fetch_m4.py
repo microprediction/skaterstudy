@@ -22,7 +22,7 @@ M4_URLS = {
     "daily": "https://raw.githubusercontent.com/Mcompetitions/M4-methods/master/Dataset/Train/Daily-train.csv",
 }
 
-SAMPLE_PER_FREQ = 25  # 25 series per frequency = 100 total
+SAMPLE_PER_FREQ = 100  # 100 series per frequency
 
 
 def fetch_csv(url: str) -> list[list[str]]:
