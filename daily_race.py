@@ -159,13 +159,16 @@ def main():
         n_done += 1
         elapsed = time.time() - t0
 
-        # Print leaderboard every 5 series or at the end
-        if n_done % 5 == 0 or n_done == n:
-            sys.stdout.write(f"\033[2J\033[H")  # clear screen
-            rate = n_done / elapsed if elapsed > 0 else 0
-            eta = (n - n_done) / rate if rate > 0 else 0
-            print(f"Daily M4 Race — {n_done}/{n} series ({elapsed:.0f}s, ~{eta:.0f}s left)")
-            print(f"Last: {sname} ({n_obs} obs)")
+        # Print compact one-line ranking after every series
+        elapsed_str = f"{elapsed:.0f}s"
+        methods = sorted(cum_smape.keys(), key=lambda m: cum_smape[m] / n_done)
+        ranking = " > ".join(f"{m}({cum_smape[m]/n_done:.2f})" for m in methods[:4])
+        print(f"  [{n_done:3d}/{n}] {sname:<25} {n_obs:5d} obs  {elapsed_str:>6}  {ranking}")
+        sys.stdout.flush()
+
+        # Print full leaderboard every 20 series
+        if n_done % 20 == 0:
+            print()
             print_leaderboard(cum_smape, cum_mase, n_done)
 
     # Final summary
