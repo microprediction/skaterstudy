@@ -1,7 +1,4 @@
-"""Daily M4 race: dantzig vs baselines with live leaderboard.
-
-Runs dantzig and simple baselines (naive, SES, drift) on all daily
-M4 series, printing an updating leaderboard after each series.
+"""Daily M4 race: skaters policies vs baselines with live progress.
 
 Usage:
     ~/.local/bin/uv run python daily_race.py
@@ -9,18 +6,15 @@ Usage:
 
 import json
 import math
-import os
 import sys
 import time
 
 
 def naive_forecast(train, h):
-    """Naive: repeat last value."""
     return [train[-1]] * h
 
 
 def ses_forecast(train, h, alpha=0.1):
-    """Simple exponential smoothing."""
     level = train[0]
     for y in train[1:]:
         level = alpha * y + (1 - alpha) * level
@@ -28,7 +22,6 @@ def ses_forecast(train, h, alpha=0.1):
 
 
 def drift_forecast(train, h):
-    """Random walk with drift: last value + h * average increment."""
     n = len(train)
     if n < 2:
         return [train[-1]] * h
@@ -37,13 +30,10 @@ def drift_forecast(train, h):
 
 
 def theta_forecast(train, h, alpha=0.1):
-    """Classical Theta: SES + half OLS slope."""
     n = len(train)
-    # SES
     level = train[0]
     for y in train[1:]:
         level = alpha * y + (1 - alpha) * level
-    # OLS slope
     sum_t = sum(range(1, n + 1))
     sum_t2 = sum(t * t for t in range(1, n + 1))
     sum_y = sum(train)
@@ -63,29 +53,15 @@ def smape(actual, predicted):
 
 
 def mase(actual, predicted, train_series):
-    """Mean Absolute Scaled Error."""
     n_train = len(train_series)
     if n_train < 2:
         return float("inf")
-    naive_errors = [abs(train_series[i] - train_series[i-1]) for i in range(1, n_train)]
+    naive_errors = [abs(train_series[i] - train_series[i - 1]) for i in range(1, n_train)]
     scale = sum(naive_errors) / len(naive_errors)
     if scale < 1e-10:
         return float("inf")
     forecast_errors = [abs(a - p) for a, p in zip(actual, predicted)]
     return sum(forecast_errors) / len(forecast_errors) / scale
-
-
-def print_leaderboard(cum_smape, cum_mase, n_done):
-    """Print a compact leaderboard sorted by sMAPE."""
-    methods = sorted(cum_smape.keys(), key=lambda m: cum_smape[m] / n_done)
-    print(f"\n  {'Rank':<5} {'Method':<20} {'sMAPE':>8} {'MASE':>8}  {'Series':>6}")
-    print(f"  {'-'*5} {'-'*20} {'-'*8} {'-'*8}  {'-'*6}")
-    for rank, m in enumerate(methods, 1):
-        avg_s = cum_smape[m] / n_done
-        avg_m = cum_mase[m] / n_done if cum_mase[m] < float("inf") else float("inf")
-        bar = '#' * max(1, int(avg_s * 3))
-        print(f"  {rank:<5} {m:<20} {avg_s:8.3f} {avg_m:8.3f}  {n_done:>6}  {bar}")
-    print()
 
 
 def main():
@@ -96,37 +72,37 @@ def main():
     with open("data/m4_test.json") as f:
         test_data = json.load(f)
 
-    h = 14  # daily horizon
+    h = 14
 
-    # Get daily series only
     daily = sorted([s for s in train_data if s.startswith("daily_") and s in test_data])
     n = len(daily)
-    print(f"Daily M4 race: {n} series, h={h}\n")
 
-    # Methods: baselines + skaters policies
-    skater_policies = {
-        "dantzig": dantzig,
-        "holt": holt,
-        "hosking": hosking,
-        "laplace": laplace,
-        "samuelson": samuelson,
-        "wald": wald,
-    }
+    skater_policies = [
+        ("dantzig", dantzig),
+        ("holt", holt),
+        ("hosking", hosking),
+        ("laplace", laplace),
+        ("samuelson", samuelson),
+        ("wald", wald),
+    ]
 
-    baseline_methods = {
-        "naive": naive_forecast,
-        "ses(0.1)": lambda tr, h: ses_forecast(tr, h, alpha=0.1),
-        "ses(0.3)": lambda tr, h: ses_forecast(tr, h, alpha=0.3),
-        "drift": drift_forecast,
-        "theta(0.1)": lambda tr, h: theta_forecast(tr, h, alpha=0.1),
-        "theta(0.3)": lambda tr, h: theta_forecast(tr, h, alpha=0.3),
-    }
+    baseline_methods = [
+        ("naive", naive_forecast),
+        ("ses(0.1)", lambda tr, h: ses_forecast(tr, h, alpha=0.1)),
+        ("ses(0.3)", lambda tr, h: ses_forecast(tr, h, alpha=0.3)),
+        ("drift", drift_forecast),
+        ("theta(0.1)", lambda tr, h: theta_forecast(tr, h, alpha=0.1)),
+        ("theta(0.3)", lambda tr, h: theta_forecast(tr, h, alpha=0.3)),
+    ]
 
-    # Cumulative scores
-    all_methods = list(baseline_methods.keys()) + list(skater_policies.keys())
-    cum_smape = {m: 0.0 for m in all_methods}
-    cum_mase = {m: 0.0 for m in all_methods}
+    all_names = [m[0] for m in baseline_methods] + [p[0] for p in skater_policies]
+    cum_smape = {m: 0.0 for m in all_names}
+    cum_mase = {m: 0.0 for m in all_names}
     n_done = 0
+
+    print(f"Daily M4 Race: {n} series, h={h}")
+    print(f"Methods: {', '.join(all_names)}")
+    print("=" * 80)
 
     t0 = time.time()
     for si, sname in enumerate(daily):
@@ -134,48 +110,57 @@ def main():
         actual = test_data[sname]
         n_obs = len(train)
 
+        print(f"\n[{si+1}/{n}] {sname} ({n_obs} obs)")
+
         # Baselines (instant)
-        for mname, mfunc in baseline_methods.items():
+        for mname, mfunc in baseline_methods:
             pred = mfunc(train, h)
             if len(pred) == len(actual):
-                cum_smape[mname] += smape(actual, pred)
+                s = smape(actual, pred)
                 m = mase(actual, pred, train)
+                cum_smape[mname] += s
                 if math.isfinite(m):
                     cum_mase[mname] += m
+                print(f"  {mname:<15} sMAPE={s:6.2f}")
+                sys.stdout.flush()
 
-        # Skaters policies
-        for pname, factory in skater_policies.items():
+        # Skaters policies (slow — show each as it completes)
+        for pname, factory in skater_policies:
+            t1 = time.time()
             f = factory(k=h)
             state = None
             for y in train:
                 dists, state = f(y, state)
             pred = [d.quantile(0.5) for d in dists]
+            dt = time.time() - t1
             if len(pred) == len(actual):
-                cum_smape[pname] += smape(actual, pred)
+                s = smape(actual, pred)
                 m = mase(actual, pred, train)
+                cum_smape[pname] += s
                 if math.isfinite(m):
                     cum_mase[pname] += m
+                print(f"  {pname:<15} sMAPE={s:6.2f}  ({dt:.1f}s)")
+                sys.stdout.flush()
 
         n_done += 1
-        elapsed = time.time() - t0
 
-        # Print compact one-line ranking after every series
-        elapsed_str = f"{elapsed:.0f}s"
-        methods = sorted(cum_smape.keys(), key=lambda m: cum_smape[m] / n_done)
-        ranking = " > ".join(f"{m}({cum_smape[m]/n_done:.2f})" for m in methods[:4])
-        print(f"  [{n_done:3d}/{n}] {sname:<25} {n_obs:5d} obs  {elapsed_str:>6}  {ranking}")
+        # Leaderboard after each series
+        ranked = sorted(all_names, key=lambda m: cum_smape[m] / n_done)
+        top = " | ".join(f"{i+1}.{m} {cum_smape[m]/n_done:.2f}" for i, m in enumerate(ranked[:5]))
+        print(f"  >> {top}")
         sys.stdout.flush()
 
-        # Print full leaderboard every 20 series
-        if n_done % 20 == 0:
-            print()
-            print_leaderboard(cum_smape, cum_mase, n_done)
-
-    # Final summary
-    print("=" * 50)
-    print(f"FINAL RESULTS ({n_done} daily series, h={h})")
-    print("=" * 50)
-    print_leaderboard(cum_smape, cum_mase, n_done)
+    # Final
+    print("\n" + "=" * 80)
+    print(f"FINAL ({n_done} series)")
+    print("=" * 80)
+    ranked = sorted(all_names, key=lambda m: cum_smape[m] / n_done)
+    print(f"  {'Rank':<5} {'Method':<15} {'sMAPE':>8} {'MASE':>8}")
+    print(f"  {'-'*5} {'-'*15} {'-'*8} {'-'*8}")
+    for rank, m in enumerate(ranked, 1):
+        avg_s = cum_smape[m] / n_done
+        avg_m = cum_mase[m] / n_done
+        print(f"  {rank:<5} {m:<15} {avg_s:8.3f} {avg_m:8.3f}")
 
 
 if __name__ == "__main__":
