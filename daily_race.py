@@ -62,15 +62,29 @@ def smape(actual, predicted):
     return 100 * total / len(actual)
 
 
-def print_leaderboard(scores, n_done):
-    """Print a compact leaderboard."""
-    methods = sorted(scores.keys(), key=lambda m: scores[m] / n_done)
-    print(f"\n  {'Rank':<5} {'Method':<20} {'sMAPE':>8}  {'Series':>6}")
-    print(f"  {'-'*5} {'-'*20} {'-'*8}  {'-'*6}")
+def mase(actual, predicted, train_series):
+    """Mean Absolute Scaled Error."""
+    n_train = len(train_series)
+    if n_train < 2:
+        return float("inf")
+    naive_errors = [abs(train_series[i] - train_series[i-1]) for i in range(1, n_train)]
+    scale = sum(naive_errors) / len(naive_errors)
+    if scale < 1e-10:
+        return float("inf")
+    forecast_errors = [abs(a - p) for a, p in zip(actual, predicted)]
+    return sum(forecast_errors) / len(forecast_errors) / scale
+
+
+def print_leaderboard(cum_smape, cum_mase, n_done):
+    """Print a compact leaderboard sorted by sMAPE."""
+    methods = sorted(cum_smape.keys(), key=lambda m: cum_smape[m] / n_done)
+    print(f"\n  {'Rank':<5} {'Method':<20} {'sMAPE':>8} {'MASE':>8}  {'Series':>6}")
+    print(f"  {'-'*5} {'-'*20} {'-'*8} {'-'*8}  {'-'*6}")
     for rank, m in enumerate(methods, 1):
-        avg = scores[m] / n_done
-        bar = '#' * max(1, int(avg * 3))
-        print(f"  {rank:<5} {m:<20} {avg:8.3f}  {n_done:>6}  {bar}")
+        avg_s = cum_smape[m] / n_done
+        avg_m = cum_mase[m] / n_done if cum_mase[m] < float("inf") else float("inf")
+        bar = '#' * max(1, int(avg_s * 3))
+        print(f"  {rank:<5} {m:<20} {avg_s:8.3f} {avg_m:8.3f}  {n_done:>6}  {bar}")
     print()
 
 
@@ -108,9 +122,10 @@ def main():
         "theta(0.3)": lambda tr, h: theta_forecast(tr, h, alpha=0.3),
     }
 
-    # Cumulative sMAPE sums
+    # Cumulative scores
     all_methods = list(baseline_methods.keys()) + list(skater_policies.keys())
     cum_smape = {m: 0.0 for m in all_methods}
+    cum_mase = {m: 0.0 for m in all_methods}
     n_done = 0
 
     t0 = time.time()
@@ -124,6 +139,9 @@ def main():
             pred = mfunc(train, h)
             if len(pred) == len(actual):
                 cum_smape[mname] += smape(actual, pred)
+                m = mase(actual, pred, train)
+                if math.isfinite(m):
+                    cum_mase[mname] += m
 
         # Skaters policies
         for pname, factory in skater_policies.items():
@@ -134,6 +152,9 @@ def main():
             pred = [d.mean for d in dists]
             if len(pred) == len(actual):
                 cum_smape[pname] += smape(actual, pred)
+                m = mase(actual, pred, train)
+                if math.isfinite(m):
+                    cum_mase[pname] += m
 
         n_done += 1
         elapsed = time.time() - t0
@@ -141,15 +162,17 @@ def main():
         # Print leaderboard every 5 series or at the end
         if n_done % 5 == 0 or n_done == n:
             sys.stdout.write(f"\033[2J\033[H")  # clear screen
-            print(f"Daily M4 Race — {n_done}/{n} series ({elapsed:.0f}s)")
-            print(f"Series: {sname} ({n_obs} obs)")
-            print_leaderboard(cum_smape, n_done)
+            rate = n_done / elapsed if elapsed > 0 else 0
+            eta = (n - n_done) / rate if rate > 0 else 0
+            print(f"Daily M4 Race — {n_done}/{n} series ({elapsed:.0f}s, ~{eta:.0f}s left)")
+            print(f"Last: {sname} ({n_obs} obs)")
+            print_leaderboard(cum_smape, cum_mase, n_done)
 
     # Final summary
     print("=" * 50)
     print(f"FINAL RESULTS ({n_done} daily series, h={h})")
     print("=" * 50)
-    print_leaderboard(cum_smape, n_done)
+    print_leaderboard(cum_smape, cum_mase, n_done)
 
 
 if __name__ == "__main__":
